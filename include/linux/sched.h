@@ -567,6 +567,10 @@ struct sched_dl_entity {
 	struct hrtimer inactive_timer;
 };
 
+struct sched_wrr_entity {
+	struct list_head		run_list;
+};
+
 union rcu_special {
 	struct {
 		u8			blocked;
@@ -648,6 +652,7 @@ struct task_struct {
 	struct task_group		*sched_task_group;
 #endif
 	struct sched_dl_entity		dl;
+	struct sched_wrr_entity	wrr;
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	/* List of struct preempt_notifier: */

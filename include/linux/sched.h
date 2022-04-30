@@ -652,7 +652,7 @@ struct task_struct {
 	struct task_group		*sched_task_group;
 #endif
 	struct sched_dl_entity		dl;
-	struct sched_wrr_entity	wrr;
+	struct sched_wrr_entity		wrr;
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 	/* List of struct preempt_notifier: */

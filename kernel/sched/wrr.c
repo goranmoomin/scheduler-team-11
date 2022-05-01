@@ -31,7 +31,7 @@ static void enqueue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 
 	mark_debug_str_wrr('e');
 
-	printk(KERN_INFO "enqueue_task_wrr rq=%p p=%p flags=%d\n", rq, p,
+	printk(KERN_INFO "enqueue_task_wrr rq=%xp p=%xp flags=%d\n", rq, p,
 	       flags);
 
 	list_add_tail(&wrr_se->run_list, &wrr_rq->tasks);
@@ -44,7 +44,7 @@ static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 
 	mark_debug_str_wrr('d');
 
-	printk(KERN_INFO "dequeue_task_wrr rq=%p p=%p flags=%d\n", rq, p,
+	printk(KERN_INFO "dequeue_task_wrr rq=%xp p=%xp flags=%d\n", rq, p,
 	       flags);
 
 	list_del(&wrr_se->run_list);
@@ -54,17 +54,7 @@ static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 static void yield_task_wrr(struct rq *rq)
 {
 	mark_debug_str_wrr('y');
-	printk(KERN_INFO "yield_task_wrr rq=%p\n", rq);
-}
-
-static bool yield_to_task_wrr(struct rq *rq, struct task_struct *p,
-			      bool preempt)
-{
-	mark_debug_str_wrr('t');
-	printk(KERN_INFO "yield_to_task_wrr rq=%p p=%p preempt=%d\n", rq, p,
-	       preempt);
-	yield_task_wrr(rq);
-	return true;
+	printk(KERN_INFO "yield_task_wrr rq=%xp\n", rq);
 }
 
 static void check_preempt_curr_wrr(struct rq *rq, struct task_struct *p,
@@ -81,8 +71,8 @@ pick_next_task_wrr(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 
 	mark_debug_str_wrr('n');
 
-	printk(KERN_INFO "pick_next_task_wrr rq=%p prev=%p rf=%p\n", rq, prev,
-	       rf);
+	printk(KERN_INFO "pick_next_task_wrr rq=%xp prev=%xp rf=%xp\n", rq,
+	       prev, rf);
 
 	if (prev->on_rq) {
 		put_prev_task(rq, prev);
@@ -102,7 +92,7 @@ static void put_prev_task_wrr(struct rq *rq, struct task_struct *prev)
 	struct wrr_rq *wrr_rq = &rq->wrr;
 
 	mark_debug_str_wrr('p');
-	printk(KERN_INFO "put_prev_task_wrr rq=%p prev=%p\n", rq, prev);
+	printk(KERN_INFO "put_prev_task_wrr rq=%xp prev=%xp\n", rq, prev);
 	if (prev->on_rq) {
 		list_add_tail(&prev->wrr.run_list, &wrr_rq->tasks);
 	}
@@ -112,19 +102,10 @@ static int select_task_rq_wrr(struct task_struct *p, int cpu, int sd_flag,
 			      int flags)
 {
 	mark_debug_str_wrr('s');
-	printk(KERN_INFO "select_task_rq_wrr p=%p cpu=%d sd_flag=%d flags=%d\n",
+	printk(KERN_INFO
+	       "select_task_rq_wrr p=%xp cpu=%d sd_flag=%d flags=%d\n",
 	       p, cpu, sd_flag, flags);
 	return cpu;
-}
-
-static void task_woken_wrr(struct rq *rq, struct task_struct *p)
-{
-	mark_debug_str_wrr('w');
-}
-
-static void switched_from_wrr(struct rq *rq, struct task_struct *p)
-{
-	mark_debug_str_wrr('f');
 }
 
 static void set_curr_task_wrr(struct rq *rq)
@@ -138,7 +119,8 @@ static void task_tick_wrr(struct rq *rq, struct task_struct *p, int queued)
 	static int counter = 0;
 
 	mark_debug_str_wrr('k');
-	printk(KERN_INFO "task_tick_wrr rq=%p p=%p queued=%d\n", rq, p, queued);
+	printk(KERN_INFO "task_tick_wrr rq=%xp p=%xp queued=%d\n", rq, p,
+	       queued);
 
 	if (counter++ >= 1000) {
 		counter = 0;

@@ -17,6 +17,8 @@ int main(void)
 
 	while(1) {
 		err = getcpu(&cpu, NULL);
+		if (err || cpu)
+			return err;
 		printf("hello, wrr %d!\n", cpu);
 		sleep(1);
 	}

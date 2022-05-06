@@ -2,9 +2,6 @@
 
 #define WRR_TIMER_DELAY_MS 2000
 
-char _debug_str_wrr[256];
-int _debug_str_wrr_idx = 0;
-
 static inline struct task_struct *wrr_task_of(struct sched_wrr_entity *wrr_se)
 {
 	return container_of(wrr_se, struct task_struct, wrr);
@@ -21,9 +18,14 @@ void wrr_timer_callback(struct timer_list *);
 static struct timer_list wrr_timer;
 
 void wrr_timer_callback(struct timer_list *timer) {
+	static int count = 0;
 	struct rq *rq0, *rq1;
 	struct sched_wrr_entity *wrr_se;
 	struct task_struct *p = NULL;
+
+	if (count++ < 20) {
+		goto out;
+	}
 
 	rq0 = cpu_rq(0);
 	rq1 = cpu_rq(1);
@@ -46,12 +48,8 @@ void wrr_timer_callback(struct timer_list *timer) {
 	}
 
 	double_rq_unlock(rq0, rq1);
+out:
 	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
-}
-
-inline static void mark_debug_str_wrr(char c)
-{
-	_debug_str_wrr[_debug_str_wrr_idx++ % 256] = c;
 }
 
 void init_wrr_rq(struct wrr_rq *wrr_rq)
@@ -66,9 +64,8 @@ static void enqueue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 	struct wrr_rq *wrr_rq = &rq->wrr;
 	struct sched_wrr_entity *wrr_se = &p->wrr;
 
-	mark_debug_str_wrr('e');
 	
-	printk(KERN_INFO "enqueue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
+	printk(KERN_DEBUG "enqueue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
 	       flags);
 
 	list_add_tail(&wrr_se->run_list, &wrr_rq->tasks);
@@ -80,9 +77,8 @@ static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_wrr_entity *wrr_se = &p->wrr;
 
-	mark_debug_str_wrr('d');
 
-	printk(KERN_INFO "dequeue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
+	printk(KERN_DEBUG "dequeue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
 	       flags);
 
 	list_del(&wrr_se->run_list);
@@ -92,8 +88,7 @@ static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 
 static void yield_task_wrr(struct rq *rq)
 {
-	mark_debug_str_wrr('y');
-	printk(KERN_INFO "yield_task_wrr rq=%px\n", rq);
+	printk(KERN_DEBUG "yield_task_wrr rq=%px\n", rq);
 }
 
 static void check_preempt_curr_wrr(struct rq *rq, struct task_struct *p,
@@ -108,9 +103,8 @@ pick_next_task_wrr(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	struct sched_wrr_entity *wrr_se;
 	struct task_struct *p = NULL;
 
-	mark_debug_str_wrr('n');
 
-	printk(KERN_INFO "pick_next_task_wrr rq=%px prev=%px rf=%px\n", rq,
+	printk(KERN_DEBUG "pick_next_task_wrr rq=%px prev=%px rf=%px\n", rq,
 	       prev, rf);
 
 	put_prev_task(rq, prev);
@@ -128,8 +122,7 @@ static void put_prev_task_wrr(struct rq *rq, struct task_struct *prev)
 {
 	struct wrr_rq *wrr_rq = &rq->wrr;
 
-	mark_debug_str_wrr('p');
-	printk(KERN_INFO "put_prev_task_wrr rq=%px prev=%px\n", rq, prev);
+	printk(KERN_DEBUG "put_prev_task_wrr rq=%px prev=%px\n", rq, prev);
 
 	if (prev->wrr.on_rq) {
 		list_move_tail(&prev->wrr.run_list, &wrr_rq->tasks);
@@ -139,8 +132,7 @@ static void put_prev_task_wrr(struct rq *rq, struct task_struct *prev)
 static int select_task_rq_wrr(struct task_struct *p, int cpu, int sd_flag,
 			      int flags)
 {
-	mark_debug_str_wrr('s');
-	printk(KERN_INFO
+	printk(KERN_DEBUG
 	       "select_task_rq_wrr p=%px cpu=%d sd_flag=%d flags=%d\n",
 	       p, cpu, sd_flag, flags);
 	return cpu;
@@ -148,15 +140,13 @@ static int select_task_rq_wrr(struct task_struct *p, int cpu, int sd_flag,
 
 static void set_curr_task_wrr(struct rq *rq)
 {
-	mark_debug_str_wrr('s');
 }
 
 static void task_tick_wrr(struct rq *rq, struct task_struct *p, int queued)
 {
 	struct wrr_rq *wrr_rq = &rq->wrr;
 
-	mark_debug_str_wrr('k');
-	printk(KERN_INFO "task_tick_wrr rq=%px p=%px queued=%d\n", rq, p,
+	printk(KERN_DEBUG "task_tick_wrr rq=%px p=%px queued=%d\n", rq, p,
 	       queued);
 
 	if (--p->wrr.time_slice)

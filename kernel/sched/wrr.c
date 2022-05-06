@@ -18,12 +18,13 @@ static inline struct rq *rq_of_wrr_se(struct sched_wrr_entity *wrr_se)
 
 void wrr_timer_callback(struct timer_list *);
 
-DEFINE_TIMER(wrr_timer, wrr_timer_callback);
+static struct timer_list wrr_timer;
 
 void wrr_timer_callback(struct timer_list *timer) {
 	struct rq *rq0, *rq1;
 	struct sched_wrr_entity *wrr_se;
 	struct task_struct *p = NULL;
+
 	rq0 = cpu_rq(0);
 	rq1 = cpu_rq(1);
 
@@ -214,6 +215,7 @@ const struct sched_class wrr_sched_class = {
 };
 
 void init_sched_wrr_class(void) {
+	timer_setup(&wrr_timer, wrr_timer_callback, TIMER_IRQSAFE);
 	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
 }
 early_initcall(init_sched_wrr_class);

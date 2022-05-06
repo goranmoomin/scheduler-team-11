@@ -1,7 +1,17 @@
 #include "sched.h"
 
+#define WRR_TIMER_DELAY_MS 2000
+
 char _debug_str_wrr[256];
 int _debug_str_wrr_idx = 0;
+
+void wrr_timer_callback(struct timer_list *);
+
+DEFINE_TIMER(wrr_timer, wrr_timer_callback);
+
+void wrr_timer_callback(struct timer_list *timer) {
+	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
+}
 
 inline static void mark_debug_str_wrr(char c)
 {
@@ -30,11 +40,12 @@ static void enqueue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 	struct sched_wrr_entity *wrr_se = &p->wrr;
 
 	mark_debug_str_wrr('e');
-
+	
 	printk(KERN_INFO "enqueue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
 	       flags);
 
 	list_add_tail(&wrr_se->run_list, &wrr_rq->tasks);
+	wrr_se->on_rq = 1;
 	add_nr_running(rq, 1);
 }
 
@@ -48,6 +59,7 @@ static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 	       flags);
 
 	list_del(&wrr_se->run_list);
+	wrr_se->on_rq = 0;
 	sub_nr_running(rq, 1);
 }
 
@@ -76,9 +88,9 @@ pick_next_task_wrr(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 
 	put_prev_task(rq, prev);
 
-	if (!list_empty(&wrr_rq->tasks)) {
-		wrr_se = list_first_entry(&wrr_rq->tasks,
-					  struct sched_wrr_entity, run_list);
+	wrr_se = list_first_entry_or_null(&wrr_rq->tasks,
+				  struct sched_wrr_entity, run_list);
+	if (wrr_se) {
 		p = wrr_task_of(wrr_se);
 	}
 
@@ -92,9 +104,8 @@ static void put_prev_task_wrr(struct rq *rq, struct task_struct *prev)
 	mark_debug_str_wrr('p');
 	printk(KERN_INFO "put_prev_task_wrr rq=%px prev=%px\n", rq, prev);
 
-	if (prev->on_rq) {
-		list_del(&prev->wrr.run_list);
-		list_add_tail(&prev->wrr.run_list, &wrr_rq->tasks);
+	if (prev->wrr.on_rq) {
+		list_move_tail(&prev->wrr.run_list, &wrr_rq->tasks);
 	}
 }
 
@@ -125,9 +136,8 @@ static void task_tick_wrr(struct rq *rq, struct task_struct *p, int queued)
 		return;
 
 	p->wrr.time_slice = WRR_BASE_TIMESLICE * p->wrr.weight;
-	if (p->on_rq) {
-		list_del(&p->wrr.run_list);
-		list_add_tail(&p->wrr.run_list, &wrr_rq->tasks);
+	if (p->wrr.on_rq) {
+		list_move_tail(&p->wrr.run_list, &wrr_rq->tasks);
 	}
 
 	resched_curr(rq);
@@ -176,3 +186,8 @@ const struct sched_class wrr_sched_class = {
 
 	.update_curr = update_curr_wrr,
 };
+
+void init_sched_wrr_class(void) {
+	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
+}
+early_initcall(init_sched_wrr_class);

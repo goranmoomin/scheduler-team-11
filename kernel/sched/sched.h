@@ -692,6 +692,7 @@ struct dl_rq {
 
 struct wrr_rq {
 	struct list_head	tasks;
+	unsigned int		total_weight;
 };
 
 #ifdef CONFIG_FAIR_GROUP_SCHED

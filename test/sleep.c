@@ -8,13 +8,16 @@ int main(void)
 {
 	struct sched_param param = { .sched_priority = 0 };
 	int err = sched_setscheduler(getpid(), SCHED_WRR, &param);
+	int cpu;
 	if (err) {
 		perror("failed to set policy to SCHED_WRR");
 		return err;
 	}
 
-	for (int i = 0; i < 5; i++) {
-		printf("hello, wrr!\n");
+
+	while(1) {
+		err = getcpu(&cpu, NULL);
+		printf("hello, wrr %d!\n", cpu);
 		sleep(1);
 	}
 

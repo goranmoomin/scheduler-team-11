@@ -5,11 +5,46 @@
 char _debug_str_wrr[256];
 int _debug_str_wrr_idx = 0;
 
+static inline struct task_struct *wrr_task_of(struct sched_wrr_entity *wrr_se)
+{
+	return container_of(wrr_se, struct task_struct, wrr);
+}
+
+static inline struct rq *rq_of_wrr_se(struct sched_wrr_entity *wrr_se)
+{
+	struct task_struct *p = wrr_task_of(wrr_se);
+	return task_rq(p);
+}
+
 void wrr_timer_callback(struct timer_list *);
 
 DEFINE_TIMER(wrr_timer, wrr_timer_callback);
 
 void wrr_timer_callback(struct timer_list *timer) {
+	struct rq *rq0, *rq1;
+	struct sched_wrr_entity *wrr_se;
+	struct task_struct *p = NULL;
+	rq0 = cpu_rq(0);
+	rq1 = cpu_rq(1);
+
+	double_rq_lock(rq0, rq1);
+
+	if (!list_empty(&rq0->wrr.tasks)) {
+		wrr_se = list_last_entry(&rq0->wrr.tasks, struct sched_wrr_entity, run_list);
+		p = wrr_task_of(wrr_se);
+		if (p == rq0->curr) {
+			p = NULL;
+		}
+	}
+
+	if (p) {
+		deactivate_task(rq0, p, 0);
+		set_task_cpu(p, 1);
+		activate_task(rq1, p, 0);
+		resched_curr(rq0);
+	}
+
+	double_rq_unlock(rq0, rq1);
 	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
 }
 
@@ -21,18 +56,9 @@ inline static void mark_debug_str_wrr(char c)
 void init_wrr_rq(struct wrr_rq *wrr_rq)
 {
 	INIT_LIST_HEAD(&wrr_rq->tasks);
+	wrr_rq->total_weight = 0;
 }
 
-static inline struct task_struct *wrr_task_of(struct sched_wrr_entity *wrr_se)
-{
-	return container_of(wrr_se, struct task_struct, wrr);
-}
-
-static inline struct rq *rq_of_wrr_se(struct sched_wrr_entity *wrr_se)
-{
-	struct task_struct *p = wrr_task_of(wrr_se);
-	return task_rq(p);
-}
 
 static void enqueue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 {

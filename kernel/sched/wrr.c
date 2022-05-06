@@ -47,7 +47,7 @@ static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 	printk(KERN_INFO "dequeue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
 	       flags);
 
-	list_del_init(&wrr_se->run_list);
+	list_del(&wrr_se->run_list);
 	sub_nr_running(rq, 1);
 }
 
@@ -74,9 +74,7 @@ pick_next_task_wrr(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	printk(KERN_INFO "pick_next_task_wrr rq=%px prev=%px rf=%px\n", rq,
 	       prev, rf);
 
-	if (prev->on_rq) {
-		put_prev_task(rq, prev);
-	}
+	put_prev_task(rq, prev);
 
 	if (!list_empty(&wrr_rq->tasks)) {
 		wrr_se = list_first_entry(&wrr_rq->tasks,
@@ -93,7 +91,11 @@ static void put_prev_task_wrr(struct rq *rq, struct task_struct *prev)
 
 	mark_debug_str_wrr('p');
 	printk(KERN_INFO "put_prev_task_wrr rq=%px prev=%px\n", rq, prev);
-	list_add_tail(&prev->wrr.run_list, &wrr_rq->tasks);
+
+	if (prev->on_rq) {
+		list_del(&prev->wrr.run_list);
+		list_add_tail(&prev->wrr.run_list, &wrr_rq->tasks);
+	}
 }
 
 static int select_task_rq_wrr(struct task_struct *p, int cpu, int sd_flag,

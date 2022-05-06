@@ -569,6 +569,8 @@ struct sched_dl_entity {
 
 struct sched_wrr_entity {
 	struct list_head		run_list;
+	unsigned int			weight;
+	unsigned int			time_slice;
 };
 
 union rcu_special {

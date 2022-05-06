@@ -31,6 +31,7 @@
 #include <linux/sched/topology.h>
 #include <linux/sched/user.h>
 #include <linux/sched/wake_q.h>
+#include <linux/sched/wrr.h>
 #include <linux/sched/xacct.h>
 
 #include <uapi/linux/sched/types.h>

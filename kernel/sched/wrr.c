@@ -116,19 +116,21 @@ static void set_curr_task_wrr(struct rq *rq)
 static void task_tick_wrr(struct rq *rq, struct task_struct *p, int queued)
 {
 	struct wrr_rq *wrr_rq = &rq->wrr;
-	static int counter = 0;
 
 	mark_debug_str_wrr('k');
 	printk(KERN_INFO "task_tick_wrr rq=%px p=%px queued=%d\n", rq, p,
 	       queued);
-	/*
-	if (counter++ >= 1000) {
-		counter = 0;
+
+	if (--p->wrr.time_slice)
+		return;
+
+	p->wrr.time_slice = WRR_BASE_TIMESLICE * p->wrr.weight;
+	if (p->on_rq) {
 		list_del(&p->wrr.run_list);
 		list_add_tail(&p->wrr.run_list, &wrr_rq->tasks);
-		resched_curr(rq);
 	}
-	*/
+
+	resched_curr(rq);
 }
 
 static void switched_to_wrr(struct rq *rq, struct task_struct *p)

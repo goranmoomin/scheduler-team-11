@@ -17,15 +17,11 @@ void wrr_timer_callback(struct timer_list *);
 
 static struct timer_list wrr_timer;
 
-void wrr_timer_callback(struct timer_list *timer) {
-	static int count = 0;
+void wrr_timer_callback(struct timer_list *timer)
+{
 	struct rq *rq0, *rq1;
 	struct sched_wrr_entity *wrr_se;
 	struct task_struct *p = NULL;
-
-	if (count++ < 20) {
-		goto out;
-	}
 
 	rq0 = cpu_rq(0);
 	rq1 = cpu_rq(1);
@@ -33,7 +29,8 @@ void wrr_timer_callback(struct timer_list *timer) {
 	double_rq_lock(rq0, rq1);
 
 	if (!list_empty(&rq0->wrr.tasks)) {
-		wrr_se = list_last_entry(&rq0->wrr.tasks, struct sched_wrr_entity, run_list);
+		wrr_se = list_last_entry(&rq0->wrr.tasks,
+					 struct sched_wrr_entity, run_list);
 		p = wrr_task_of(wrr_se);
 		if (p == rq0->curr) {
 			p = NULL;
@@ -41,14 +38,15 @@ void wrr_timer_callback(struct timer_list *timer) {
 	}
 
 	if (p) {
-		deactivate_task(rq0, p, 0);
-		set_task_cpu(p, 1);
-		activate_task(rq1, p, 0);
-		resched_curr(rq0);
+		if (cpumask_test_cpu(1, &p->cpus_allowed)) {
+			deactivate_task(rq0, p, 0);
+			set_task_cpu(p, 1);
+			activate_task(rq1, p, 0);
+			resched_curr(rq1);
+		}
 	}
 
 	double_rq_unlock(rq0, rq1);
-out:
 	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
 }
 
@@ -58,13 +56,11 @@ void init_wrr_rq(struct wrr_rq *wrr_rq)
 	wrr_rq->total_weight = 0;
 }
 
-
 static void enqueue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct wrr_rq *wrr_rq = &rq->wrr;
 	struct sched_wrr_entity *wrr_se = &p->wrr;
 
-	
 	printk(KERN_DEBUG "enqueue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
 	       flags);
 
@@ -76,7 +72,6 @@ static void enqueue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct sched_wrr_entity *wrr_se = &p->wrr;
-
 
 	printk(KERN_DEBUG "dequeue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
 	       flags);
@@ -103,14 +98,13 @@ pick_next_task_wrr(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	struct sched_wrr_entity *wrr_se;
 	struct task_struct *p = NULL;
 
-
 	printk(KERN_DEBUG "pick_next_task_wrr rq=%px prev=%px rf=%px\n", rq,
 	       prev, rf);
 
 	put_prev_task(rq, prev);
 
 	wrr_se = list_first_entry_or_null(&wrr_rq->tasks,
-				  struct sched_wrr_entity, run_list);
+					  struct sched_wrr_entity, run_list);
 	if (wrr_se) {
 		p = wrr_task_of(wrr_se);
 	}
@@ -204,8 +198,9 @@ const struct sched_class wrr_sched_class = {
 	.update_curr = update_curr_wrr,
 };
 
-void init_sched_wrr_class(void) {
+void init_sched_wrr_class(void)
+{
 	timer_setup(&wrr_timer, wrr_timer_callback, TIMER_IRQSAFE);
 	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
 }
-early_initcall(init_sched_wrr_class);
+core_initcall(init_sched_wrr_class);

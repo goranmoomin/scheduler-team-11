@@ -179,6 +179,10 @@ struct task_struct init_task
 #ifdef CONFIG_SECURITY
 	.security	= NULL,
 #endif
+	.wrr		= {
+		.run_list	= LIST_HEAD_INIT(init_task.wrr.run_list),
+		.weight		= 10
+	},
 };
 EXPORT_SYMBOL(init_task);
 

@@ -13,8 +13,6 @@ static inline struct rq *rq_of_wrr_se(struct sched_wrr_entity *wrr_se)
 	return task_rq(p);
 }
 
-void wrr_timer_callback(struct timer_list *);
-
 static struct timer_list wrr_timer;
 
 void wrr_timer_callback(struct timer_list *timer)
@@ -66,11 +64,13 @@ static void enqueue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 
 	list_add_tail(&wrr_se->run_list, &wrr_rq->tasks);
 	wrr_se->on_rq = 1;
+	wrr_rq->total_weight += wrr_se->weight;
 	add_nr_running(rq, 1);
 }
 
 static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 {
+	struct wrr_rq *wrr_rq = &rq->wrr;
 	struct sched_wrr_entity *wrr_se = &p->wrr;
 
 	printk(KERN_DEBUG "dequeue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
@@ -78,6 +78,7 @@ static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 
 	list_del(&wrr_se->run_list);
 	wrr_se->on_rq = 0;
+	wrr_rq->total_weight -= wrr_se->weight;
 	sub_nr_running(rq, 1);
 }
 

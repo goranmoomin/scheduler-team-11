@@ -18,21 +18,24 @@ static struct timer_list wrr_timer;
 void wrr_timer_callback(struct timer_list *timer)
 {
 	struct rq *rq, *min_rq, *max_rq;
-	struct sched_wrr_entity *wrr_se;
 	struct task_struct *p = NULL;
 
+	struct sched_wrr_entity *wrr_se;
+	struct task_struct *max_p = NULL;
+
 	unsigned int cpu, min_cpu = 0, max_cpu = 0;
-	unsigned int min_weight = UINT_MAX, max_weight = 0;
+	unsigned int min_total_weight = UINT_MAX, max_total_weight = 0;
+	unsigned int max_entry_weight = 0;
 
 	for_each_cpu (cpu, cpu_active_mask) {
 		rq = cpu_rq(cpu);
-		if (rq->wrr.total_weight < min_weight) {
+		if (rq->wrr.total_weight < min_total_weight) {
 			min_cpu = cpu;
-			min_weight = rq->wrr.total_weight;
+			min_total_weight = rq->wrr.total_weight;
 		}
-		if (rq->wrr.total_weight > max_weight) {
+		if (rq->wrr.total_weight > max_total_weight) {
 			max_cpu = cpu;
-			max_weight = rq->wrr.total_weight;
+			max_total_weight = rq->wrr.total_weight;
 		}
 	}
 
@@ -44,33 +47,39 @@ void wrr_timer_callback(struct timer_list *timer)
 
 	double_rq_lock(min_rq, max_rq);
 
-	if (!list_empty(&max_rq->wrr.tasks)) {
-		wrr_se = list_last_entry(&max_rq->wrr.tasks,
-					 struct sched_wrr_entity, run_list);
+	list_for_each_entry (wrr_se, &max_rq->wrr.tasks, run_list) {
 		p = wrr_task_of(wrr_se);
 		if (p == max_rq->curr ||
 		    !cpumask_test_cpu(min_cpu, &p->cpus_allowed)) {
-			p = NULL;
+			continue;
+		}
+		if (max_total_weight - wrr_se->weight <
+		    min_total_weight + wrr_se->weight) {
+			continue;
+		}
+		if (wrr_se->weight > max_entry_weight) {
+			max_p = p;
+			max_entry_weight = wrr_se->weight;
 		}
 	}
 
-	if (p) {
-		deactivate_task(max_rq, p, 0);
-		set_task_cpu(p, min_cpu);
-		activate_task(min_rq, p, 0);
+	if (max_p) {
+		deactivate_task(max_rq, max_p, 0);
+		set_task_cpu(max_p, min_cpu);
+		activate_task(min_rq, max_p, 0);
 		resched_curr(min_rq);
 	}
 
 	double_rq_unlock(min_rq, max_rq);
 
-	if (p) {
+	if (max_p) {
 		printk(KERN_DEBUG
 		       "[WRR LOAD BALANCING] jiffies: %Ld\n"
 		       "[WRR LOAD BALANCING] max_cpu: %d, total weight: %u\n"
 		       "[WRR LOAD BALANCING] min_cpu: %d, total weight: %u\n"
 		       "[WRR LOAD BALANCING] migrated task name: %s, task weight: %u\n",
-		       (long long)(jiffies), max_cpu, max_weight, min_cpu,
-		       min_weight, p->comm, p->wrr.weight);
+		       (long long)(jiffies), max_cpu, max_total_weight, min_cpu,
+		       min_total_weight, max_p->comm, max_p->wrr.weight);
 	}
 
 out:
@@ -159,7 +168,21 @@ static int select_task_rq_wrr(struct task_struct *p, int cpu, int sd_flag,
 	/* printk(KERN_DEBUG
 	       "select_task_rq_wrr p=%px cpu=%d sd_flag=%d flags=%d\n",
 	       p, cpu, sd_flag, flags); */
-	return cpu;
+	unsigned int min_cpu = 0;
+	unsigned int min_total_weight = UINT_MAX;
+
+	struct rq *rq;
+
+	for_each_cpu (cpu, cpu_active_mask) {
+		rq = cpu_rq(cpu);
+		if (rq->wrr.total_weight < min_total_weight &&
+		    cpumask_test_cpu(cpu, &p->cpus_allowed)) {
+			min_cpu = cpu;
+			min_total_weight = rq->wrr.total_weight;
+		}
+	}
+
+	return min_cpu;
 }
 
 static void set_curr_task_wrr(struct rq *rq)

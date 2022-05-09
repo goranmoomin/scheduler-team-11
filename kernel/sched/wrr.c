@@ -53,7 +53,7 @@ void wrr_timer_callback(struct timer_list *timer)
 		    !cpumask_test_cpu(min_cpu, &p->cpus_allowed)) {
 			continue;
 		}
-		if (max_total_weight - wrr_se->weight <
+		if (max_total_weight - wrr_se->weight <=
 		    min_total_weight + wrr_se->weight) {
 			continue;
 		}

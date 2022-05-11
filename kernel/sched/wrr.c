@@ -257,3 +257,12 @@ void init_sched_wrr_class(void)
 	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
 }
 core_initcall(init_sched_wrr_class);
+
+SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight) {
+        return 0;
+}
+
+SYSCALL_DEFINE1(sched_getweight, pid_t, pid) {
+        task_struct* pid_task =  get_pid_task(pid, PIDTYPE_PID);
+        return pid_task->wrr.weight;
+}

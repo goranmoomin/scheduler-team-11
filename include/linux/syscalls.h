@@ -1119,6 +1119,9 @@ asmlinkage long sys_ni_syscall(void);
 
 #endif /* CONFIG_ARCH_HAS_SYSCALL_WRAPPER */
 
+/* kernel/sched/wrr.c */
+asmlinkage long sys_sched_setweight(pid_t pid, unsigned int weight);
+asmlinkage long sys_sched_getweight(pid_t pid);
 
 /*
  * Kernel code should not call syscalls (i.e., sys_xyzyyz()) directly.

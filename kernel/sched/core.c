@@ -2169,8 +2169,6 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 	p->rt.on_list		= 0;
 
 	INIT_LIST_HEAD(&p->wrr.run_list);
-	p->wrr.weight		= current->wrr.weight;
-	p->wrr.time_slice	= WRR_BASE_TIMESLICE * p->wrr.weight;
 	p->wrr.on_rq		= 0;
 
 #ifdef CONFIG_PREEMPT_NOTIFIERS
@@ -2312,6 +2310,9 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	 */
 	p->prio = current->normal_prio;
 
+	p->wrr.weight = current->wrr.weight;
+	p->wrr.time_slice = WRR_BASE_TIMESLICE * p->wrr.weight;
+
 	/*
 	 * Revert to default priority/policy on fork if requested.
 	 */
@@ -2320,6 +2321,8 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 			p->policy = SCHED_NORMAL;
 			p->static_prio = NICE_TO_PRIO(0);
 			p->rt_priority = 0;
+			p->wrr.weight = 10;
+			p->wrr.time_slice = WRR_BASE_TIMESLICE * p->wrr.weight;
 		} else if (PRIO_TO_NICE(p->static_prio) < 0)
 			p->static_prio = NICE_TO_PRIO(0);
 

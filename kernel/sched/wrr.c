@@ -258,11 +258,69 @@ void init_sched_wrr_class(void)
 }
 core_initcall(init_sched_wrr_class);
 
-SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight) {
-        return 0;
+static struct task_struct *find_process_by_pid(pid_t pid)
+{
+	return pid ? find_task_by_vpid(pid) : current;
 }
 
-SYSCALL_DEFINE1(sched_getweight, pid_t, pid) {
-        task_struct* pid_task =  get_pid_task(pid, PIDTYPE_PID);
-        return pid_task->wrr.weight;
+SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight)
+{
+	struct task_struct *p;
+	const struct cred *cred = current_cred(), *pcred;
+	int retval;
+
+	if (pid < 0 || weight <= 0 || weight > 20)
+		return -EINVAL;
+
+	rcu_read_lock();
+	retval = -ESRCH;
+	p = find_process_by_pid(pid);
+	if (!p) {
+		goto out;
+	}
+
+	if (p->sched_class != &wrr_sched_class) {
+		retval = -EINVAL;
+		goto out;
+	}
+
+	pcred = __task_cred(p);
+	if (!uid_eq(cred->euid, pcred->euid) &&
+	    !uid_eq(cred->euid, pcred->uid) &&
+	    !uid_eq(cred->euid, GLOBAL_ROOT_UID)) {
+		retval = -EPERM;
+		goto out;
+	}
+
+	p->wrr.weight = weight;
+	retval = 0;
+out:
+	rcu_read_unlock();
+	return retval;
+}
+
+SYSCALL_DEFINE1(sched_getweight, pid_t, pid)
+{
+	struct task_struct *p;
+	int retval;
+
+	if (pid < 0)
+		return -EINVAL;
+
+	rcu_read_lock();
+	retval = -ESRCH;
+	p = find_process_by_pid(pid);
+	if (!p) {
+		goto out;
+	}
+
+	if (p->sched_class != &wrr_sched_class) {
+		retval = -EINVAL;
+		goto out;
+	}
+
+	retval = p->wrr.weight;
+out:
+	rcu_read_unlock();
+	return retval;
 }

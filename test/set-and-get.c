@@ -10,8 +10,7 @@
 int main(void)
 {
 	struct sched_param param = { .sched_priority = 0 };
-	pid_t pid = getpid();
-	int err = sched_setscheduler(pid, SCHED_WRR, &param);
+	int err = sched_setscheduler(0, SCHED_WRR, &param);
 	if (err) {
 		perror("failed to set policy to SCHED_WRR");
 		return err;

@@ -7,7 +7,7 @@
 int main(void)
 {
 	struct sched_param param = { .sched_priority = 50 };
-	int err = sched_setscheduler(getpid(), SCHED_RR, &param);
+	int err = sched_setscheduler(0, SCHED_RR, &param);
 	unsigned int cpu;
 
 	if (err) {

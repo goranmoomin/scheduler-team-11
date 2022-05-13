@@ -62,7 +62,12 @@ int main(int argc, char **argv)
 		}
 	}
 
-	clock_t start = clock();
+	struct timespec start;
+
+	if (clock_gettime(CLOCK_REALTIME, &start) == -1) {
+		perror("clock_gettime error");
+		exit(EXIT_FAILURE);
+	}
 	intmax_t cnt;
 
 	for (int val = 2; val <= 997 * 991; val++) {
@@ -76,9 +81,18 @@ int main(int argc, char **argv)
 		}
 		cnt += tmp;
 	}
-	clock_t end = clock();
 
-	printf("weight=%d duration=%f cnt=%jd\n", weight, (double)(end - start),
+	struct timespec end;
+
+	if (clock_gettime(CLOCK_REALTIME, &end) == -1) {
+		perror("clock_gettime error");
+		exit(EXIT_FAILURE);
+	}
+
+	printf("weight=%d duration=%f cnt=%jd\n", weight,
+	       (double)(end.tv_sec + (double)end.tv_nsec / 1000000000) -
+		       (double)(start.tv_sec +
+				(double)start.tv_nsec / 1000000000),
 	       cnt);
 
 	return 0;

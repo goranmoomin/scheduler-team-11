@@ -25,17 +25,19 @@ void wrr_timer_callback(struct timer_list *timer)
 
 	unsigned int cpu, min_cpu = 0, max_cpu = 0;
 	unsigned int min_total_weight = UINT_MAX, max_total_weight = 0;
+	unsigned int total_weight;
 	unsigned int max_entry_weight = 0;
 
 	for_each_cpu (cpu, cpu_active_mask) {
 		rq = cpu_rq(cpu);
-		if (rq->wrr.total_weight < min_total_weight) {
+		total_weight = READ_ONCE(rq->wrr.total_weight);
+		if (total_weight < min_total_weight) {
 			min_cpu = cpu;
-			min_total_weight = rq->wrr.total_weight;
+			min_total_weight = total_weight;
 		}
-		if (rq->wrr.total_weight > max_total_weight) {
+		if (total_weight > max_total_weight) {
 			max_cpu = cpu;
-			max_total_weight = rq->wrr.total_weight;
+			max_total_weight = total_weight;
 		}
 	}
 
@@ -97,9 +99,6 @@ static void enqueue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 	struct wrr_rq *wrr_rq = &rq->wrr;
 	struct sched_wrr_entity *wrr_se = &p->wrr;
 
-	/* printk(KERN_DEBUG "enqueue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
-	       flags); */
-
 	list_add_tail(&wrr_se->run_list, &wrr_rq->tasks);
 	wrr_se->on_rq = 1;
 	wrr_rq->total_weight += wrr_se->weight;
@@ -111,9 +110,6 @@ static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 	struct wrr_rq *wrr_rq = &rq->wrr;
 	struct sched_wrr_entity *wrr_se = &p->wrr;
 
-	/* printk(KERN_DEBUG "dequeue_task_wrr rq=%px p=%px flags=%d\n", rq, p,
-	       flags); */
-
 	list_del(&wrr_se->run_list);
 	wrr_se->on_rq = 0;
 	wrr_rq->total_weight -= wrr_se->weight;
@@ -124,8 +120,6 @@ static void yield_task_wrr(struct rq *rq)
 {
 	struct wrr_rq *wrr_rq = &rq->wrr;
 	struct sched_wrr_entity *wrr_se;
-
-	/* printk(KERN_DEBUG "yield_task_wrr rq=%px\n", rq); */
 
 	wrr_se = list_first_entry_or_null(&wrr_rq->tasks,
 					  struct sched_wrr_entity, run_list);
@@ -146,9 +140,6 @@ pick_next_task_wrr(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	struct sched_wrr_entity *wrr_se;
 	struct task_struct *p = NULL;
 
-	/* printk(KERN_DEBUG "pick_next_task_wrr rq=%px prev=%px rf=%px\n", rq,
-	       prev, rf); */
-
 	put_prev_task(rq, prev);
 
 	wrr_se = list_first_entry_or_null(&wrr_rq->tasks,
@@ -164,8 +155,6 @@ static void put_prev_task_wrr(struct rq *rq, struct task_struct *prev)
 {
 	struct wrr_rq *wrr_rq = &rq->wrr;
 
-	/* printk(KERN_DEBUG "put_prev_task_wrr rq=%px prev=%px\n", rq, prev); */
-
 	if (prev->wrr.on_rq) {
 		list_move_tail(&prev->wrr.run_list, &wrr_rq->tasks);
 	}
@@ -174,20 +163,19 @@ static void put_prev_task_wrr(struct rq *rq, struct task_struct *prev)
 static int select_task_rq_wrr(struct task_struct *p, int cpu, int sd_flag,
 			      int flags)
 {
-	/* printk(KERN_DEBUG
-	       "select_task_rq_wrr p=%px cpu=%d sd_flag=%d flags=%d\n",
-	       p, cpu, sd_flag, flags); */
 	unsigned int min_cpu = 0;
 	unsigned int min_total_weight = UINT_MAX;
+	unsigned int total_weight;
 
 	struct rq *rq;
 
 	for_each_cpu (cpu, cpu_active_mask) {
 		rq = cpu_rq(cpu);
-		if (rq->wrr.total_weight < min_total_weight &&
+		total_weight = READ_ONCE(rq->wrr.total_weight);
+		if (total_weight < min_total_weight &&
 		    cpumask_test_cpu(cpu, &p->cpus_allowed)) {
 			min_cpu = cpu;
-			min_total_weight = rq->wrr.total_weight;
+			min_total_weight = total_weight;
 		}
 	}
 
@@ -201,9 +189,6 @@ static void set_curr_task_wrr(struct rq *rq)
 static void task_tick_wrr(struct rq *rq, struct task_struct *p, int queued)
 {
 	struct wrr_rq *wrr_rq = &rq->wrr;
-
-	/* printk(KERN_DEBUG "task_tick_wrr rq=%px p=%px queued=%d\n", rq, p,
-	       queued); */
 
 	if (--p->wrr.time_slice)
 		return;
@@ -268,6 +253,8 @@ static struct task_struct *find_process_by_pid(pid_t pid)
 SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight)
 {
 	struct task_struct *p;
+	struct rq *rq;
+	struct rq_flags rf;
 	const struct cred *cred = current_cred(), *pcred;
 	int retval;
 
@@ -278,12 +265,12 @@ SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight)
 	retval = -ESRCH;
 	p = find_process_by_pid(pid);
 	if (!p) {
-		goto out;
+		goto err;
 	}
 
 	if (p->sched_class != &wrr_sched_class) {
 		retval = -EINVAL;
-		goto out;
+		goto err;
 	}
 
 	pcred = __task_cred(p);
@@ -291,12 +278,23 @@ SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight)
 	    !uid_eq(cred->euid, pcred->uid) &&
 	    !uid_eq(cred->euid, GLOBAL_ROOT_UID)) {
 		retval = -EPERM;
-		goto out;
+		goto err;
 	}
+	rcu_read_unlock();
 
+	rq = task_rq_lock(p, &rf);
+	if (p->wrr.on_rq) {
+		rq->wrr.total_weight -= p->wrr.weight;
+	}
 	p->wrr.weight = weight;
-	retval = 0;
-out:
+	if (p->wrr.on_rq) {
+		rq->wrr.total_weight += weight;
+	}
+	task_rq_unlock(rq, p, &rf);
+
+	return 0;
+
+err:
 	rcu_read_unlock();
 	return retval;
 }

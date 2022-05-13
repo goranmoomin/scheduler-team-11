@@ -4106,10 +4106,13 @@ static void __setscheduler(struct rq *rq, struct task_struct *p,
 		p->sched_class = &dl_sched_class;
 	else if (rt_prio(p->prio))
 		p->sched_class = &rt_sched_class;
-	else if (task_has_wrr_policy(p))
+	else if (task_has_wrr_policy(p)) {
 		p->sched_class = &wrr_sched_class;
-	else
+		p->wrr.weight = 10;
+	} else {
 		p->sched_class = &wrr_sched_class;
+		p->wrr.weight = 10;
+	}
 }
 
 /*

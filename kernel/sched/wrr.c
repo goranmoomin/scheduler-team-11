@@ -122,7 +122,16 @@ static void dequeue_task_wrr(struct rq *rq, struct task_struct *p, int flags)
 
 static void yield_task_wrr(struct rq *rq)
 {
+	struct wrr_rq *wrr_rq = &rq->wrr;
+	struct sched_wrr_entity *wrr_se;
+
 	/* printk(KERN_DEBUG "yield_task_wrr rq=%px\n", rq); */
+
+	wrr_se = list_first_entry_or_null(&wrr_rq->tasks,
+					  struct sched_wrr_entity, run_list);
+	if (wrr_se) {
+		list_move_tail(&wrr_se->run_list, &wrr_rq->tasks);
+	}
 }
 
 static void check_preempt_curr_wrr(struct rq *rq, struct task_struct *p,
@@ -215,11 +224,6 @@ static void prio_changed_wrr(struct rq *rq, struct task_struct *p, int oldprio)
 {
 }
 
-static unsigned int get_rr_interval_wrr(struct rq *rq, struct task_struct *task)
-{
-	return 0;
-}
-
 static void update_curr_wrr(struct rq *rq)
 {
 }
@@ -245,8 +249,6 @@ const struct sched_class wrr_sched_class = {
 
 	.prio_changed = prio_changed_wrr,
 	.switched_to = switched_to_wrr,
-
-	.get_rr_interval = get_rr_interval_wrr,
 
 	.update_curr = update_curr_wrr,
 };

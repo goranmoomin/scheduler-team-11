@@ -13,24 +13,31 @@ static inline struct rq *rq_of_wrr_se(struct sched_wrr_entity *wrr_se)
 	return task_rq(p);
 }
 
+#ifdef CONFIG_SMP
+
 static struct timer_list wrr_timer;
 
 void wrr_timer_callback(struct timer_list *timer)
 {
-	struct rq *rq, *min_rq, *max_rq;
-	struct task_struct *p = NULL;
-
-	struct sched_wrr_entity *wrr_se;
-	struct task_struct *max_p = NULL;
-
+	struct rq *min_rq, *max_rq;
 	unsigned int cpu, min_cpu = 0, max_cpu = 0;
 	unsigned int min_total_weight = UINT_MAX, max_total_weight = 0;
-	unsigned int total_weight;
-	unsigned int max_entry_weight = 0;
+
+	struct sched_wrr_entity *wrr_se;
+	struct task_struct *p = NULL;
+	unsigned int weight = 0;
+	char comm[TASK_COMM_LEN];
 
 	for_each_cpu (cpu, cpu_active_mask) {
-		rq = cpu_rq(cpu);
-		total_weight = READ_ONCE(rq->wrr.total_weight);
+		struct rq *rq = cpu_rq(cpu);
+		/*
+                 * Determining the max and min weight is not critical and does
+                 * not need to be exact. Hence instead of locking all runqueues,
+                 * we read the weight directly with READ_ONCE. Since
+                 * total_weight is 32-bit, reading is atomic.
+                 */
+		unsigned int total_weight = READ_ONCE(rq->wrr.total_weight);
+
 		if (total_weight < min_total_weight) {
 			min_cpu = cpu;
 			min_total_weight = total_weight;
@@ -50,43 +57,47 @@ void wrr_timer_callback(struct timer_list *timer)
 	double_rq_lock(min_rq, max_rq);
 
 	list_for_each_entry (wrr_se, &max_rq->wrr.tasks, run_list) {
-		p = wrr_task_of(wrr_se);
-		if (p == max_rq->curr ||
-		    !cpumask_test_cpu(min_cpu, &p->cpus_allowed)) {
+		struct task_struct *ip = wrr_task_of(wrr_se);
+		if (ip == max_rq->curr ||
+		    !cpumask_test_cpu(min_cpu, &ip->cpus_allowed)) {
 			continue;
 		}
 		if (max_total_weight - wrr_se->weight <=
 		    min_total_weight + wrr_se->weight) {
 			continue;
 		}
-		if (wrr_se->weight > max_entry_weight) {
-			max_p = p;
-			max_entry_weight = wrr_se->weight;
+		if (wrr_se->weight > weight) {
+			p = ip;
+			weight = wrr_se->weight;
 		}
 	}
 
-	if (max_p) {
-		deactivate_task(max_rq, max_p, 0);
-		set_task_cpu(max_p, min_cpu);
-		activate_task(min_rq, max_p, 0);
+	if (p) {
+		get_task_comm(comm, p);
+
+		deactivate_task(max_rq, p, 0);
+		set_task_cpu(p, min_cpu);
+		activate_task(min_rq, p, 0);
 		resched_curr(min_rq);
 	}
 
 	double_rq_unlock(min_rq, max_rq);
 
-	if (max_p) {
+	if (p) {
 		printk(KERN_DEBUG
 		       "[WRR LOAD BALANCING] jiffies: %Ld\n"
 		       "[WRR LOAD BALANCING] max_cpu: %d, total weight: %u\n"
 		       "[WRR LOAD BALANCING] min_cpu: %d, total weight: %u\n"
 		       "[WRR LOAD BALANCING] migrated task name: %s, task weight: %u\n",
 		       (long long)(jiffies), max_cpu, max_total_weight, min_cpu,
-		       min_total_weight, max_p->comm, max_p->wrr.weight);
+		       min_total_weight, comm, weight);
 	}
 
 out:
 	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
 }
+
+#endif
 
 void init_wrr_rq(struct wrr_rq *wrr_rq)
 {
@@ -165,13 +176,11 @@ static int select_task_rq_wrr(struct task_struct *p, int cpu, int sd_flag,
 {
 	unsigned int min_cpu = 0;
 	unsigned int min_total_weight = UINT_MAX;
-	unsigned int total_weight;
-
-	struct rq *rq;
 
 	for_each_cpu (cpu, cpu_active_mask) {
-		rq = cpu_rq(cpu);
-		total_weight = READ_ONCE(rq->wrr.total_weight);
+		struct rq *rq = cpu_rq(cpu);
+		/* Avoid locking the runqueue just to find minimum weight. */
+		unsigned int total_weight = READ_ONCE(rq->wrr.total_weight);
 		if (total_weight < min_total_weight &&
 		    cpumask_test_cpu(cpu, &p->cpus_allowed)) {
 			min_cpu = cpu;
@@ -238,12 +247,17 @@ const struct sched_class wrr_sched_class = {
 	.update_curr = update_curr_wrr,
 };
 
+#ifdef CONFIG_SMP
+
 void init_sched_wrr_class(void)
 {
+	/* Interrupts are disabled to allow locking the runqueue. */
 	timer_setup(&wrr_timer, wrr_timer_callback, TIMER_IRQSAFE);
 	mod_timer(&wrr_timer, jiffies + msecs_to_jiffies(WRR_TIMER_DELAY_MS));
 }
 core_initcall(init_sched_wrr_class);
+
+#endif
 
 static struct task_struct *find_process_by_pid(pid_t pid)
 {
@@ -282,6 +296,7 @@ SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight)
 	}
 	rcu_read_unlock();
 
+	/* The runqueue lock and pi_lock must both be held. */
 	rq = task_rq_lock(p, &rf);
 	if (p->wrr.on_rq) {
 		rq->wrr.total_weight -= p->wrr.weight;
@@ -319,7 +334,12 @@ SYSCALL_DEFINE1(sched_getweight, pid_t, pid)
 		goto out;
 	}
 
-	retval = p->wrr.weight;
+	/*
+	 * Trying to provide the exact weight by locking is meaningless, the
+	 * weight can change while the syscall returns.
+	 * Since weight is 32-bit, reading the weight is atomic.
+	 */
+	retval = READ_ONCE(p->wrr.weight);
 out:
 	rcu_read_unlock();
 	return retval;

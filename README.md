@@ -140,3 +140,34 @@ Instead of hackily redirect attempts to use the CFS scheduler, the
 implementation assigns the WRR scheduler directly without changing the
 task policy. Hence all `SCHED_NORMAL` tasks are also considered WRR;
 WRR-specific syscalls also work on them.
+
+## Testing and Performance
+
+### Test programs
+
+We have written various programs in the `test/` directory. Test
+programs are described below.
+
+- `crazy.c`: Infinite loop without any syscalls.
+- `kindly-crazy.c`: Infinite loop that yields on every iteration.
+- `sleep.c`: Infinite loop that calls syscalls on every iteration.
+- `factorization.c`: Fix CPU affinity to current CPU, fork 20
+  instances of itself and set its WRR weight differently, and
+  repeatedly factorize every number from 1 to 997*991. The program
+  prints how much time the factorization has taken.
+- `affinity-check.c`: Infinite loop that yields on every iteration,
+  but with CPU affinity fixed.
+
+All programs that end with `-n` simply forks `atoi(argv[1])` instances
+of the main program.
+
+
+### Performance
+
+The following graph depicts how the turnaround time of the
+factorization program varies depending on weight. Since the program
+fixes its cpu affinity, these processes gets CPU time proportionally
+to its weight. Indeed, the graph shows that the turnaround time is
+quite exactly inverse of the weight.
+
+![Factorization turnaround time per weight on single CPU](https://user-images.githubusercontent.com/37990858/169116555-55b06740-deaa-4d2a-9265-f1df5ca01127.png)

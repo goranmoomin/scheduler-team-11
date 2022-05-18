@@ -38,6 +38,26 @@ The following data structures were defined:
 
 The overall scheduler implementation works as described below:
 
+```
+              ┌─────────┐
+    task_tick │  timer  │
+    ┌─────────│interrupt│   put_prev
+    │         └─────────┘  yield_task
+    │  ┌───────────────────────────────────────┐
+ ┌ ─│─ ┼ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┼ ─ ─ ┐
+    ▼  │                                       ▼
+ │ ┌───┴───┐ ┌───────┐ ┌───────┐ ┌───────┐ ┌ ─ ─ ─ ┐ │
+   │       ├┐│       ├┐│       ├┐│       ├┐
+ │ │RUNNING│││ READY │││ READY │││ READY │││ READY │ │
+   │       │└┤       │└┤       │└┤       │└─
+ │ └───┬───┘ └───────┘ └───────┘ └───────┘ └ ─ ─ ─ ┘ │
+       │             WRR runqueue              ▲
+ └ ─ ─ ┼ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┼ ─ ─ ┘
+       ▼                                       │
+ dequeue_task                            enqueue_task
+
+```
+
 - The WRR runqueue manages all enqueued tasks, including the running
   task as one linked list.
 - Each task has it’s own time slice state, and the scheduler
@@ -106,6 +126,8 @@ it can run the added task if there is no tasks running.
 
 Note that since the implementation holds the lock of the original
 runqueue the task once resided, it doesn’t need to hold `pi_lock`.
+Also note that, since we find the target task after we lock the
+runqueue, load balancing cannot race with `sched_setweight`.
 
 The load balancer logic gets triggered by a timer every two seconds.
 This timer is initialized with the init call mechanism. Also note that

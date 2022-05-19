@@ -203,6 +203,8 @@ static void task_tick_wrr(struct rq *rq, struct task_struct *p, int queued)
 		return;
 
 	p->wrr.time_slice = WRR_BASE_TIMESLICE * p->wrr.weight;
+	/* This is always expected to be true.
+           We did not remove this only because of time constraints. */
 	if (p->wrr.on_rq) {
 		list_move_tail(&p->wrr.run_list, &wrr_rq->tasks);
 	}

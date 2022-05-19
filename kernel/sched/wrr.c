@@ -272,6 +272,7 @@ SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight)
 	struct rq *rq;
 	struct rq_flags rf;
 	const struct cred *cred = current_cred(), *pcred;
+	int is_root = 0;
 	int retval;
 
 	if (pid < 0 || weight <= 0 || weight > 20)
@@ -290,9 +291,9 @@ SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight)
 	}
 
 	pcred = __task_cred(p);
+	is_root = uid_eq(cred->euid, GLOBAL_ROOT_UID);
 	if (!uid_eq(cred->euid, pcred->euid) &&
-	    !uid_eq(cred->euid, pcred->uid) &&
-	    !uid_eq(cred->euid, GLOBAL_ROOT_UID)) {
+	    !uid_eq(cred->euid, pcred->uid) && !is_root) {
 		retval = -EPERM;
 		goto err;
 	}
@@ -300,6 +301,12 @@ SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight)
 
 	/* The runqueue lock and pi_lock must both be held. */
 	rq = task_rq_lock(p, &rf);
+
+	if (p->wrr.weight < weight && !is_root) {
+		retval = -EPERM;
+		goto rq_exit;
+	}
+
 	if (p->wrr.on_rq) {
 		rq->wrr.total_weight -= p->wrr.weight;
 	}
@@ -307,9 +314,12 @@ SYSCALL_DEFINE2(sched_setweight, pid_t, pid, unsigned int, weight)
 	if (p->wrr.on_rq) {
 		rq->wrr.total_weight += weight;
 	}
+	retval = 0;
+
+rq_exit:
 	task_rq_unlock(rq, p, &rf);
 
-	return 0;
+	return retval;
 
 err:
 	rcu_read_unlock();
